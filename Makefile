@@ -7,14 +7,55 @@ else
 	OS_DETECT := $(shell uname -s)
 endif
 
+JUCE_DEFINES = \
+	-DJUCE_GLOBAL_MODULE_SETTINGS_INCLUDED=1
+
+
 ifeq ($(OS_DETECT), Windows)
+	CXX = x86_64-w64-mingw32-g++
 	SHARED_LIB_SUFFIX = dll
 	STATIC_LIB_SUFFIX = lib
+
+	JUCE_CFLAGS =
+	JUCE_LIBS = -lshell32 \
+		-llole32 \
+		-lvfw32 \
+		-lwinmm \
+		-lwininet \
+		-lws2_32 \
+		-ldsound \
+		-lwsock32 \
+		-lwldap32 \
+		-lkernel32 \
+		-lopengl32 \
+		-lglu32.a \
+		-luuid \
+		-lrpcrt4 \
+		-lgdi32 \
+		-lcomdlg32 \
+		-lversion \
+		-ldsound \
+		-limm32 \
+		-lshlwapi
 endif
 
 ifeq ($(OS_DETECT), Linux)
 	SHARED_LIB_SUFFIX = so
 	STATIC_LIB_SUFFIX = a
+
+	JUCE_PKGS = \
+			alsa \
+			freetype2 \
+			libcurl \
+			x11 \
+			xext \
+			xinerama \
+			gl \
+			zlib
+
+	JUCE_CFLAGS = $(shell pkg-config --cflags $(JUCE_PKGS))
+	JUCE_LIBS = $(shell pkg-config --libs $(JUCE_PKGS))
+	JUCE_DEFINES += -DLINUX=1
 endif
 
 ifneq ($(AR),)
@@ -25,19 +66,6 @@ BUILD_PATH = $(MAKEFILE_PATH)/build
 SRC_PATH = $(MAKEFILE_PATH)/juce/modules
 INCLUDE_PATH = $(SRC_PATH)
 
-JUCE_LIBS = \
-		alsa \
-		freetype2 \
-		libcurl \
-		x11 \
-		xext \
-		xinerama \
-		gl \
-		zlib
-
-JUCE_DEFINES = \
-	-DLINUX=1 \
-	-DJUCE_GLOBAL_MODULE_SETTINGS_INCLUDED=1
 
 ifeq ($(config),)
 	config = RELEASE
@@ -59,11 +87,11 @@ endif
 CXX_FLAGS = \
 	$(FLAGS) \
 	-fpermissive \
-	-std=c++14 -lpthread \
+	-std=c++14 \
 	-I$(INCLUDE_PATH) \
 	$(JUCE_DEFINES) \
-	$(shell pkg-config --cflags $(JUCE_LIBS)) \
-	$(shell pkg-config --libs $(JUCE_LIBS))
+	$(JUCE_LIBS)  -lpthread \
+	$(JUCE_CFLAGS)
 
 SOURCES = $(shell ls $(SRC_PATH)/*/*.cpp | grep -v audio_plugin_client)
 OBJECTS = $(foreach source,$(SOURCES),$(addprefix $(OBJ_PATH)/, $(subst $(SRC_PATH)/,,$(source:.cpp=.o))))
@@ -85,7 +113,7 @@ all: shared static
 			echo Copying lib`basename $$file` to $(LIB_PATH); \
 			cp $$file $(LIB_PATH)/lib`basename $$file`; \
 		else \
-			echo Exist: lib`basename $$file`; \
+ 			echo Exist: lib`basename $$file`; \
 		fi \
 	done
 
