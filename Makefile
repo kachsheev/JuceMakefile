@@ -1,7 +1,20 @@
 MAKEFILE_PATH := $(shell dirname $(abspath $(lastword $(MAKEFILE_LIST))))
-# Detecting OS
-ifeq ($(OS),)
 
+# Detecting OS
+ifeq ($(OS),Windows_NT)
+	OS_DETECT := Windows
+else
+	OS_DETECT := $(shell uname -s)
+endif
+
+ifeq ($(OS_DETECT), Windows)
+	SHARED_LIB_SUFFIX = dll
+	STATIC_LIB_SUFFIX = lib
+endif
+
+ifeq ($(OS_DETECT), Linux)
+	SHARED_LIB_SUFFIX = so
+	STATIC_LIB_SUFFIX = a
 endif
 
 ifneq ($(AR),)
@@ -46,40 +59,40 @@ endif
 CXX_FLAGS = \
 	$(FLAGS) \
 	-fpermissive \
-	-std=c++14 -lGL -ldl -lpthread -lrt \
+	-std=c++14 -lpthread \
 	-I$(INCLUDE_PATH) \
 	$(JUCE_DEFINES) \
 	$(shell pkg-config --cflags $(JUCE_LIBS)) \
 	$(shell pkg-config --libs $(JUCE_LIBS))
 
 SOURCES = $(shell ls $(SRC_PATH)/*/*.cpp | grep -v audio_plugin_client)
-OBJECTS = $(foreach source, $(SOURCES), $(addprefix $(OBJ_PATH)/, $(subst $(SRC_PATH)/,,$(source:.cpp=.o))))
+OBJECTS = $(foreach source,$(SOURCES),$(addprefix $(OBJ_PATH)/, $(subst $(SRC_PATH)/,,$(source:.cpp=.o))))
 SHARED_OBJECTS = $(OBJECTS:.o=_shared.o)
 STATIC_OBJECTS = $(OBJECTS:.o=_static.o)
 
-LOCAL_SHARED_LIBS = $(OBJECTS:.o=.so)
-LOCAL_STATIC_LIBS = $(OBJECTS:.o=.a)
+LOCAL_SHARED_LIBS = $(OBJECTS:.o=.$(SHARED_LIB_SUFFIX))
+LOCAL_STATIC_LIBS = $(OBJECTS:.o=.$(STATIC_LIB_SUFFIX))
 LOCAL_LIBS = $(LOCAL_SHARED_LIBS) $(LOCAL_STATIC_LIBS)
 
-SHARED_LIBS = $(addprefix $(LIB_PATH)/,$(notdir $(LOCAL_SHARED_LIBS)))
-STATIC_LIBS = $(addprefix $(LIB_PATH)/,$(notdir $(LOCAL_STATIC_LIBS)))
+SHARED_LIBS = $(addprefix $(LIB_PATH)/lib,$(notdir $(LOCAL_SHARED_LIBS)))
+STATIC_LIBS = $(addprefix $(LIB_PATH)/lib,$(notdir $(LOCAL_STATIC_LIBS)))
 LIBS = $(SHARED_LIBS) $(STATIC_LIBS)
 
 all: shared static
 	@for file in $(LOCAL_LIBS); do \
-		if [ ! -f $(LIB_PATH)/`basename $$file` ]; \
+		if [ ! -f $(LIB_PATH)/lib`basename $$file` ]; \
 		then \
-			echo Copying `basename $$file` to $(LIB_PATH); \
-			cp $$file $(LIB_PATH); \
+			echo Copying lib`basename $$file` to $(LIB_PATH); \
+			cp $$file $(LIB_PATH)/lib`basename $$file`; \
 		else \
-			echo Exist: `basename $$file`; \
+			echo Exist: lib`basename $$file`; \
 		fi \
 	done
 
 clean: .rm_build_dir
 
 .PHONY: clean
-	
+
 # ----------
 
 shared: .make_build_dir $(SHARED_OBJECTS) $(LOCAL_SHARED_LIBS)
@@ -103,9 +116,8 @@ $(OBJ_PATH)/%_shared.o: $(SRC_PATH)/%.cpp
 $(OBJ_PATH)/%_static.o: $(SRC_PATH)/%.cpp
 	$(CXX) $(CXX_FLAGS) -c $^ -o $@
 
-$(OBJ_PATH)/%.so: $(OBJ_PATH)/%_shared.o
+$(OBJ_PATH)/%.$(SHARED_LIB_SUFFIX): $(OBJ_PATH)/%_shared.o
 	$(CXX) -shared -o $@ $^
 
-$(OBJ_PATH)/%.a: $(OBJ_PATH)/%_static.o
+$(OBJ_PATH)/%.$(STATIC_LIB_SUFFIX): $(OBJ_PATH)/%_static.o
 	$(AR) rc $@ $^
-
