@@ -12,29 +12,45 @@ BUILD_PATH = $(MAKEFILE_PATH)/build
 SRC_PATH = $(MAKEFILE_PATH)/juce/modules
 INCLUDE_PATH = $(SRC_PATH)
 
+JUCE_LIBS = \
+		alsa \
+		freetype2 \
+		libcurl \
+		x11 \
+		xext \
+		xinerama \
+		gl \
+		zlib
+
+JUCE_DEFINES = \
+	-DLINUX=1 \
+	-DJUCE_GLOBAL_MODULE_SETTINGS_INCLUDED=1
+
 ifeq ($(config),)
 	config = RELEASE
 endif
 ifeq ($(config),DEBUG)
 	LIB_PATH = $(BUILD_PATH)/debug/lib
 	OBJ_PATH = $(BUILD_PATH)/debug/obj
-	FLAGS = -Og
+	FLAGS = -O0 -g -ggdb
+	JUCE_DEFINES +=  -DDEBUG=1 -D_DEBUG=1
 endif
 ifeq ($(config),RELEASE)
 	LIB_PATH = $(BUILD_PATH)/release/lib
 	OBJ_PATH = $(BUILD_PATH)/release/obj
 	FLAGS = -O3
+	JUCE_DEFINES += -DDEBUG=0 -DNDEBUG=1
 endif
 
 # Build config
 CXX_FLAGS = \
 	$(FLAGS) \
+	-fpermissive \
 	-std=c++14 -lGL -ldl -lpthread -lrt \
 	-I$(INCLUDE_PATH) \
-	-DLINUX=1 \
-	-DJUCE_GLOBAL_MODULE_SETTINGS_INCLUDED=1 \
-	$(shell pkg-config --cflags alsa freetype2 libcurl x11 xext xinerama) \
-	$(shell pkg-config --libs alsa freetype2 libcurl x11 xext xinerama)
+	$(JUCE_DEFINES) \
+	$(shell pkg-config --cflags $(JUCE_LIBS)) \
+	$(shell pkg-config --libs $(JUCE_LIBS))
 
 SOURCES = $(shell ls $(SRC_PATH)/*/*.cpp | grep -v audio_plugin_client)
 OBJECTS = $(foreach source, $(SOURCES), $(addprefix $(OBJ_PATH)/, $(subst $(SRC_PATH)/,,$(source:.cpp=.o))))
@@ -50,8 +66,14 @@ STATIC_LIBS = $(addprefix $(LIB_PATH)/,$(notdir $(LOCAL_STATIC_LIBS)))
 LIBS = $(SHARED_LIBS) $(STATIC_LIBS)
 
 all: shared static
-	for file in $(LOCAL_LIBS); do \
-		cp $$file $(LIB_PATH); \
+	@for file in $(LOCAL_LIBS); do \
+		if [ ! -f $(LIB_PATH)/`basename $$file` ]; \
+		then \
+			echo Copying `basename $$file` to $(LIB_PATH); \
+			cp $$file $(LIB_PATH); \
+		else \
+			echo Exist: `basename $$file`; \
+		fi \
 	done
 
 clean: .rm_build_dir
@@ -76,7 +98,7 @@ static: .make_build_dir $(STATIC_OBJECTS) $(LOCAL_STATIC_LIBS)
 # ----------
 
 $(OBJ_PATH)/%_shared.o: $(SRC_PATH)/%.cpp
-	$(CXX) -fpic $(CXX_FLAGS) -c $^ -o $@
+	$(CXX) -fpic -DJUCE_DLL_BUILD=1 $(CXX_FLAGS) -c $^ -o $@
 
 $(OBJ_PATH)/%_static.o: $(SRC_PATH)/%.cpp
 	$(CXX) $(CXX_FLAGS) -c $^ -o $@
@@ -86,3 +108,4 @@ $(OBJ_PATH)/%.so: $(OBJ_PATH)/%_shared.o
 
 $(OBJ_PATH)/%.a: $(OBJ_PATH)/%_static.o
 	$(AR) rc $@ $^
+
